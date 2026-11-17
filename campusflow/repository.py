@@ -83,6 +83,7 @@ class SQLiteCampusFlowRepository:
 
     def list_registrations(self, event_id: int) -> list[Registration]:
         rows = self.connection.execute(
-            "SELECT event_id, user_id FROM registrations WHERE event_id = ? ORDER BY id", (event_id,)
+            "SELECT event_id, user_id FROM registrations WHERE event_id = ? ORDER BY id",
+            (event_id,),
         ).fetchall()
         return [Registration(r["event_id"], r["user_id"]) for r in rows]

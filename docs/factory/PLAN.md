@@ -36,7 +36,7 @@ Reglas de colaboración:
 |---|---|---|---|
 | Lun | 16-nov | Repo creado, starter versionado, estructura y plan (este documento) | Todos |
 | Mar | 17-nov | Cada integrante: `uv sync`, baseline tests, API key de AI Studio en `.env`. Revisar contratos de agentes y máquina de estados | Todos |
-| Mar | 17-nov | **T00**: corregir lint del baseline (solo formato) para dejar `main` y la CI en verde — [ADR-004](decisions/ADR-004-baseline-lint.md) | C (aprueba Tech Lead) |
+| ~~Mar~~ Lun | 16-nov | ✅ **T00**: lint del baseline corregido (solo formato); `main` y CI en verde — [ADR-004](decisions/ADR-004-baseline-lint.md) | Hecho |
 | Mar | 17-nov | `state.py` + `orchestrator.py` mínimo: corre Intake → Planner y se detiene en `AWAITING_PLAN_APPROVAL` | A |
 | Mar–Mié | 17/18-nov | Prompts de Intake/Planner con salida estructurada; Intake detecta ambigüedad (CR-005) | B |
 | Mar–Mié | 17/18-nov | `verify_repo.py` extendido (contract checks) + CI verde + primer eval case (CR-005 → STOP) | C |

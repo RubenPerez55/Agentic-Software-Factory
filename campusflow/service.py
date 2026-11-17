@@ -1,4 +1,9 @@
-from .errors import CapacityReachedError, EventNotFoundError, InvalidEventError, RegistrationNotFoundError
+from .errors import (
+    CapacityReachedError,
+    EventNotFoundError,
+    InvalidEventError,
+    RegistrationNotFoundError,
+)
 from .repository import SQLiteCampusFlowRepository
 
 

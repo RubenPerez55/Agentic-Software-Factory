@@ -32,6 +32,16 @@ tests/product/test_service.py:3:101: E501 Line too long (116 > 100)
 ## Implicación
 
 El Verification Gate bloquea con ruff en FAIL, así que la fábrica no podría pasar ningún CR desde
-este baseline. Antes del primer run se debe hacer un cambio **solo de formato** (sin cambiar
-comportamiento ni aserciones de tests) y dejar `main` en verde. Se registra como tarea T00 en
-[PLAN.md](PLAN.md) y como decisión en [ADR-004](decisions/ADR-004-baseline-lint.md).
+este baseline. Decisión en [ADR-004](decisions/ADR-004-baseline-lint.md) (tarea T00).
+
+## Corrección (16-nov-2026)
+
+Commit `chore: fix baseline lint`: `ruff check --fix` reordenó y partió los imports (corrige los
+3× `I001` y 3 de los `E501`) y se partió a mano una línea en `repository.py`. Sin cambios de
+comportamiento ni de aserciones; en `tests/product/test_service.py` solo cambió el bloque de import.
+
+| Check | Antes | Después |
+|---|---|---|
+| `pytest` | 10 passed, 1 xfailed | 10 passed, 1 xfailed |
+| `ruff` | FAIL (7) | **PASS** |
+| `scripts/verify_repo.py` | FAIL | **PASS** |

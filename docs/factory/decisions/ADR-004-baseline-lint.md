@@ -1,6 +1,6 @@
 # ADR-004 — Corregir el lint del baseline antes del primer run
 
-- Estado: **Propuesto** (requiere aprobación del Tech Lead)
+- Estado: **Aceptado e implementado** (2026-11-16, commit `chore: fix baseline lint`)
 - Fecha: 2026-11-16
 
 ## Contexto

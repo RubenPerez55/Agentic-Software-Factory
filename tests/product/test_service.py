@@ -1,6 +1,11 @@
 import pytest
 
-from campusflow.errors import CapacityReachedError, EventNotFoundError, InvalidEventError, RegistrationNotFoundError
+from campusflow.errors import (
+    CapacityReachedError,
+    EventNotFoundError,
+    InvalidEventError,
+    RegistrationNotFoundError,
+)
 from campusflow.repository import SQLiteCampusFlowRepository
 from campusflow.service import CampusFlowService
 
