@@ -1,0 +1,37 @@
+agent: intake
+role: Intake Agent
+goal: Convertir el Change Request en un reporte acotado y decidir si puede pasar a planeación.
+model: gemini-3.8-flash
+context:
+  - change_requests/<CR>.md
+  - docs/REPO_MAP.md
+  - docs/REQUIREMENTS.md
+  - docs/SPEC.md
+  - docs/ARCHITECTURE.md
+allow:
+  - list_repo_files
+  - read_repo_file
+  - search_repo
+deny:
+  - write_any_file
+  - run_commands
+  - design_implementation
+  - modify_requirements
+output:
+  artifact: runs/<CR>/01-intake-report.md
+  schema:
+    requested_outcome: str
+    affected_requirements: [str]          # p. ej. AC-03.3, FR-04
+    acceptance_criteria: [str]            # AC-CRxxx.n
+    likely_areas: [str]                   # rutas del repo
+    ambiguities: [{question: str, why_it_matters: str}]
+    conflicts: [{item: str, evidence: str}]   # p. ej. test existente que contradice el CR
+    context_used: [str]
+    recommendation: PROCEED | HUMAN_CLARIFICATION_REQUIRED
+stop_conditions:
+  - ambiguity_in_policy                   # quién/qué/cuánto no está definido (CR-005)
+  - conflict_between_cr_and_requirements
+  - change_request_missing_or_unreadable
+human_escalation:
+  gate: clarification
+  role: Product Owner

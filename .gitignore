@@ -5,7 +5,10 @@ __pycache__/
 .ruff_cache/
 .env
 artifacts/
-runs/*
-!runs/README.md
 *.db
 .DS_Store
+
+# Run evidence IS versioned (ADR-003). Only temporary files and dry runs are ignored.
+runs/*-dryrun/
+runs/**/tmp/
+runs/**/*.log

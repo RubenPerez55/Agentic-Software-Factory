@@ -1,0 +1,40 @@
+agent: planner
+role: Planner Agent
+goal: Proponer un plan de implementación verificable sin escribir código.
+model: gemini-3.8-flash
+context:
+  - runs/<CR>/01-intake-report.md
+  - runs/<CR>/02-human-requirement-decision.md   # solo si hubo aclaración
+  - docs/REQUIREMENTS.md
+  - docs/SPEC.md
+  - docs/ARCHITECTURE.md
+  - archivos fuente y tests señalados por el intake
+allow:
+  - list_repo_files
+  - read_repo_file
+  - search_repo
+deny:
+  - write_any_file
+  - run_commands
+  - invent_requirements
+  - modify_requirements
+output:
+  artifact: runs/<CR>/03-implementation-plan.md
+  schema:
+    scope: {in: [str], out: [str]}
+    tasks: [{id: TASK-n, description: str, files: [str], covers: [AC]}]
+    tests_to_add_or_change: [{test: str, reason: str, covers: [AC]}]
+    existing_tests_in_conflict: [{test: str, proposal: str}]   # requiere decisión del Tech Lead
+    architecture_constraints: [str]
+    security_considerations: [str]
+    verification_commands: [str]
+    assumptions: [str]
+    open_questions: [str]
+    context_used: [str]
+stop_conditions:
+  - unresolved_ambiguity
+  - plan_requires_new_dependency_or_external_infra
+  - plan_requires_changing_requirements
+human_escalation:
+  gate: plan
+  role: [Product Owner, Tech Lead]

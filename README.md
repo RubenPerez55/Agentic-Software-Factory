@@ -1,4 +1,29 @@
-# CampusFlow + Agentic Software Factory — Starter Repository
+# Agentic Software Factory — CampusFlow
+
+Proyecto final de **Ingeniería de Software asistida por IA** (UADY). Equipo de 3 personas.
+
+> **La fábrica es el producto; CampusFlow es el escenario.**
+> Flujo objetivo: Change Request → Intake → Planner → Human Gate → Coder → Test Analyst →
+> Verification → Reviewer + Security → Human Review → Fix/Re-verify/Re-review → Evidence →
+> Release Gate → **READY FOR HUMAN MERGE** (el merge siempre es humano).
+
+## Dónde está cada cosa
+
+| Necesito… | Ir a |
+|---|---|
+| Plan de 2 semanas, quién hace qué, checklist del jueves | [docs/factory/PLAN.md](docs/factory/PLAN.md) |
+| Equipo, roles humanos y rotación por CR | [docs/factory/HUMAN_ROLES.md](docs/factory/HUMAN_ROLES.md) |
+| Arquitectura y máquina de estados de la fábrica | [docs/factory/FACTORY_ARCHITECTURE.md](docs/factory/FACTORY_ARCHITECTURE.md), [docs/factory/STATE_MACHINE.md](docs/factory/STATE_MACHINE.md) |
+| Contratos de los agentes | [factory_app/contracts/](factory_app/contracts/) |
+| Decisiones de arquitectura (ADRs) | [docs/factory/decisions/](docs/factory/decisions/) |
+| Formato de evidencia y `factory-run.json` | [runs/README.md](runs/README.md) |
+| Requisitos del producto (fuente de verdad, no se editan para "cumplir") | [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md), [docs/SPEC.md](docs/SPEC.md) |
+
+Estado actual: starter importado sin cambios + planeación. Ver [docs/factory/BASELINE.md](docs/factory/BASELINE.md).
+
+---
+
+## Starter (documentación original)
 
 Starter repository for the UADY course **Ingeniería de Software asistida por IA**.
 

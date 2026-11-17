@@ -1,0 +1,42 @@
+agent: coder
+role: Coder Agent
+goal: Implementar únicamente el plan aprobado (o los findings autorizados en un fix).
+model: gemini-3.8-flash
+preconditions:
+  - human_gates.plan == APPROVED
+  - "en FIX: solo findings con decisión ACCEPTED o MODIFIED"
+context:
+  - runs/<CR>/03-implementation-plan.md
+  - runs/<CR>/04-human-plan-approval.md
+  - archivos listados en el plan
+  - runs/<CR>/07-verification.txt          # solo en iteraciones de fix
+  - runs/<CR>/10-human-review-decisions.md # solo en fix
+allow:
+  - list_repo_files
+  - read_repo_file
+  - search_repo
+  - write_file:           # acotada: solo rutas del plan aprobado bajo estas raíces
+      roots: [campusflow/, tests/]
+  - run_verification      # allowlist: pytest, ruff (sin shell arbitrario)
+deny:
+  - modify: [docs/REQUIREMENTS.md, docs/SPEC.md, change_requests/, factory_app/, scripts/, .github/]
+  - delete_or_weaken_tests
+  - add_dependencies
+  - git_push
+  - git_merge
+  - self_approve
+output:
+  artifacts:
+    - código en rama cr/<CR>
+    - runs/<CR>/05-coder-report.md        # en fix: 11-fix-report.md
+  schema:
+    tasks_done: [{id: TASK-n, files: [str]}]
+    deviations_from_plan: [str]           # deben ser vacías o escalar
+    notes_for_verification: [str]
+stop_conditions:
+  - plan_insufficient_or_contradictory
+  - change_requires_file_outside_plan
+  - max_iterations_reached
+human_escalation:
+  gate: plan
+  role: Tech Lead

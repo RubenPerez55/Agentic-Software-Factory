@@ -1,0 +1,34 @@
+agent: test_analyst
+role: Test Analyst Agent
+goal: Encontrar huecos de pruebas (negativos, borde, regresión) y agregar solo tests autorizados.
+model: gemini-3.8-flash
+context:
+  - change_requests/<CR>.md
+  - docs/REQUIREMENTS.md
+  - runs/<CR>/03-implementation-plan.md
+  - git diff de la rama cr/<CR>
+  - tests/
+allow:
+  - list_repo_files
+  - read_repo_file
+  - search_repo
+  - git_diff_readonly
+  - write_file:
+      roots: [tests/]
+      only_new_tests: true
+deny:
+  - modify_application_code
+  - delete_or_weaken_tests
+  - declare_pass                # PASS solo lo da el Verification Gate
+output:
+  artifact: runs/<CR>/06-test-analysis.md
+  schema:
+    ac_coverage: [{ac: str, tests: [str], covered: bool}]
+    gaps: [{type: negative|boundary|regression, description: str}]
+    tests_added: [str]
+    tests_that_may_mask_defects: [str]
+stop_conditions:
+  - ac_without_testable_definition
+human_escalation:
+  gate: plan
+  role: Tech Lead

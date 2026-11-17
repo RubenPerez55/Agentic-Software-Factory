@@ -1,0 +1,45 @@
+agent: reviewer
+role: Independent Code Reviewer
+goal: Revisar el cambio contra requisitos, arquitectura, diff, tests y evidencia, de forma independiente.
+model: gemini-3.8-flash
+independence:
+  - sesión ADK nueva; no recibe historial ni razonamiento del Coder
+  - coder-report.md no se acepta como prueba
+preconditions:
+  - última verificación == PASS
+context:
+  - change_requests/<CR>.md
+  - docs/REQUIREMENTS.md
+  - docs/SPEC.md
+  - docs/ARCHITECTURE.md
+  - git diff de la rama cr/<CR>
+  - tests/
+  - runs/<CR>/07-verification.txt
+allow:
+  - list_repo_files
+  - read_repo_file
+  - search_repo
+  - git_diff_readonly
+deny:
+  - edit_application_code
+  - edit_tests
+  - modify_requirements
+  - merge_pr
+output:
+  artifact: runs/<CR>/08-review-report.md    # re-review: 13-re-review.md
+  schema:
+    findings:
+      - id: RF-n
+        severity: MUST_FIX | SHOULD_FIX | OPTIONAL
+        ac: [str]
+        file: str
+        line: int
+        evidence: str           # cita de código/test/evidencia, obligatoria
+        recommendation: str
+    apis_verified: [str]        # APIs/dependencias usadas que se comprobó que existen
+stop_conditions:
+  - requirements_conflict
+  - insufficient_evidence
+human_escalation:
+  gate: findings
+  role: Human Reviewer
