@@ -18,9 +18,9 @@ frente técnico (quién lo construye) y además **rota** roles humanos por CR (q
 
 | Integrante | Frente técnico (dueño) | Entregables principales |
 |---|---|---|
-| **A** | Orquestador + estado + gates | `factory_app/orchestrator.py`, `state.py`, `gates.py`, CLI `scripts/factory.py`, checkpoint/resume ante 429, `factory-run.json` |
-| **B** | Agentes de construcción + contexto | Intake, Planner, Coder, Test Analyst; prompts; context engineering (REPO_MAP/search); tools de escritura acotadas |
-| **C** | Calidad, seguridad y evaluación | Verification gate (pytest/ruff/contract), Semgrep + pip-audit + secret scan, Reviewer y Security agents, evals E01–E06, CI |
+| **A** — Ruben Perez | Orquestador + estado + gates | `factory_app/orchestrator.py`, `state.py`, `gates.py`, CLI `scripts/factory.py`, checkpoint/resume ante 429, `factory-run.json` |
+| **B** — Hector Castro | Agentes de construcción + contexto | Intake, Planner, Coder, Test Analyst; prompts; context engineering (REPO_MAP/search); tools de escritura acotadas |
+| **C** — Javier Ortiz | Calidad, seguridad y evaluación | Verification gate (pytest/ruff/contract), Semgrep + pip-audit + secret scan, Reviewer y Security agents, evals E01–E06, CI |
 
 Reglas de colaboración:
 
@@ -60,12 +60,12 @@ Reglas de colaboración:
 
 | # | Requisito del profesor | Dónde se demuestra | Estado |
 |---|---|---|---|
-| 1 | Equipo de 2–3 personas definido | [HUMAN_ROLES.md](HUMAN_ROLES.md) | ☐ completar nombres |
+| 1 | Equipo de 2–3 personas definido | [HUMAN_ROLES.md](HUMAN_ROLES.md): Ruben Perez (A), Hector Castro (B), Javier Ortiz (C) | ☑ |
 | 2 | Starter descargado y funcionando | commit `chore: import CampusFlow...` | ☑ |
 | 3 | Baseline tests ejecutados | `uv run pytest -q` + `uv run ruff check ...` (resultado en [BASELINE.md](BASELINE.md)) | ☑ |
 | 4 | Google AI Studio / Gemini configurado | `.env` local de cada integrante (nunca commiteado) | ☐ cada quien |
 | 5 | Arquitectura inicial revisada | [FACTORY_ARCHITECTURE.md](FACTORY_ARCHITECTURE.md), [STATE_MACHINE.md](STATE_MACHINE.md) | ☑ borrador |
-| 6 | Roles humanos definidos | [HUMAN_ROLES.md](HUMAN_ROLES.md) | ☐ completar nombres |
+| 6 | Roles humanos definidos | [HUMAN_ROLES.md](HUMAN_ROLES.md) (rotación por CR) | ☑ confirmar en equipo |
 | 7 | Agentes y responsabilidades | [`factory_app/contracts/`](../../factory_app/contracts/) | ☑ borrador |
 | 8 | Intake → Planner → Human Gate funcionando | `scripts/factory.py run CR-001` se detiene en Gate 1 | ☐ A + B |
 | 9 | CR-001 revisado y listo | [CR-001-readiness.md](CR-001-readiness.md) | ☑ borrador |

@@ -5,10 +5,11 @@
 | ID | Nombre | GitHub | Frente técnico |
 |---|---|---|---|
 | A | Ruben Perez | `RubenPerez55` | Orquestador, estado, gates, evidencia |
-| B | _(completar)_ | _(completar)_ | Agentes de construcción (Intake, Planner, Coder, Test Analyst) + contexto |
-| C | _(completar)_ | _(completar)_ | Verification, Security, Reviewer, evals, CI |
+| B | Hector Castro | `hectorcast44` | Agentes de construcción (Intake, Planner, Coder, Test Analyst) + contexto |
+| C | Javier Ortiz | `Javier-de-jesus-ortiz-miss` | Verification, Security, Reviewer, evals, CI |
 
-> La asignación de frentes es una propuesta; ajústenla en la primera reunión y actualicen esta tabla.
+> La asignación de frentes (B/C) es una propuesta; ajústenla en la primera reunión y actualicen
+> esta tabla. Las letras A/B/C se usan en la rotación de roles de abajo y en [PLAN.md](PLAN.md).
 
 ## Roles humanos de la fábrica
 
