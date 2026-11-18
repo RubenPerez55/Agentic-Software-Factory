@@ -9,10 +9,16 @@ from .prompts import (
     SECURITY_INSTRUCTION,
     TEST_ANALYST_INSTRUCTION,
 )
-from .tools import list_repo_files, read_repo_file, run_baseline_verification, write_run_evidence
+from .tools import (
+    list_repo_files,
+    read_repo_file,
+    run_baseline_verification,
+    search_repo,
+    write_run_evidence,
+)
 
 GEMINI_MODEL = "gemini-3.8-flash"
-READ_TOOLS = [list_repo_files, read_repo_file]
+READ_TOOLS = [list_repo_files, read_repo_file, search_repo]
 
 intake_agent = LlmAgent(
     name="IntakeAgent",
@@ -73,6 +79,6 @@ evidence_agent = LlmAgent(
     model=GEMINI_MODEL,
     description="Consolidates evidence without making the final release decision.",
     instruction=EVIDENCE_INSTRUCTION,
-    tools=[*READ_TOOLS, write_run_evidence],
+    tools=[list_repo_files, read_repo_file, write_run_evidence],
     output_key="evidence_summary",
 )
