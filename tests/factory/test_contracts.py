@@ -1,41 +1,14 @@
-from pathlib import Path
-
 import yaml
 
 from factory_app import agents, prompts
-
-ROOT = Path(__file__).resolve().parents[2]
-CONTRACTS_DIR = ROOT / "factory_app" / "contracts"
-
-REQUIRED_CONTRACT_KEYS = {
-    "agent",
-    "role",
-    "goal",
-    "model",
-    "context",
-    "allow",
-    "deny",
-    "output",
-    "stop_conditions",
-    "human_escalation",
-}
-
-IMPLEMENTED_TOOLS = {
-    "list_repo_files",
-    "read_repo_file",
-    "search_repo",
-    "write_run_evidence",
-}
-
-
-def _allow_names(contract: dict) -> set[str]:
-    names: set[str] = set()
-    for entry in contract["allow"]:
-        if isinstance(entry, str):
-            names.add(entry)
-        elif isinstance(entry, dict):
-            names.update(entry.keys())
-    return names
+from factory_app.contract_checks import (
+    CONTRACTS_DIR,
+    IMPLEMENTED_TOOLS,
+    REQUIRED_CONTRACT_KEYS,
+    ROOT,
+    check_contracts,
+)
+from factory_app.contract_checks import allow_names as _allow_names
 
 
 def test_required_repository_contract_files_exist():
@@ -139,3 +112,7 @@ def test_planning_prompts_enforce_contract_fields():
         "HUMAN_CLARIFICATION_REQUIRED",
     ):
         assert field in prompts.PLANNER_INSTRUCTION
+
+
+def test_contract_gate_passes():
+    assert check_contracts() == []

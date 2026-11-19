@@ -11,9 +11,10 @@
 | `factory_app/tools.py` | Bounded tools |
 | `factory_app/prompts.py` | Agent contracts (prompt form) |
 | `factory_app/contracts/` | Agent contracts (YAML: context, allow/deny, output, stop conditions) |
+| `factory_app/contract_checks.py` | Deterministic agent-contract checks (used by Verification Gate) |
 | `factory_app/workflows.py` | ADK workflow (planning phase) |
 | `change_requests/` | Work input |
-| `scripts/` | Deterministic run/gate helpers |
+| `scripts/` | Deterministic run/gate helpers (`verify_repo.py` = Verification Gate) |
 | `tests/` | Product, factory and eval tests |
 | `runs/` | Generated evidence (versioned) |
 | `docs/factory/` | Factory design: architecture, state machine, human roles, plan, ADRs (team documentation, not product requirements) |

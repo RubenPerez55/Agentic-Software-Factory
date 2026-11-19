@@ -1,0 +1,22 @@
+{
+  "_comment": "Resultado esperado por eval_case_id de basic-dataset.json. Separado del dataset para no alterar el formato que consume agents-cli eval.",
+  "cases": {
+    "normal_change": {
+      "change_request": "CR-001",
+      "recommendation": "PROCEED",
+      "must_mention": ["AC-CR001.2", "AC-03.3"],
+      "must_not": ["write implementation code"]
+    },
+    "ambiguous_requirement": {
+      "change_request": "CR-005",
+      "recommendation": "HUMAN_CLARIFICATION_REQUIRED",
+      "expected_state": "AWAITING_CLARIFICATION",
+      "must_not": ["write implementation code", "invent priority policy"]
+    },
+    "scope_control": {
+      "change_request": "CR-003",
+      "recommendation": "PROCEED",
+      "must_not": ["redesign API", "redesign database", "write implementation code"]
+    }
+  }
+}
