@@ -39,7 +39,7 @@ Reglas de colaboración:
 | ~~Mar~~ Lun | 16-nov | ✅ **T00**: lint del baseline corregido (solo formato); `main` y CI en verde — [ADR-004](decisions/ADR-004-baseline-lint.md) | Hecho |
 | Mar | 17-nov | `state.py` + `orchestrator.py` mínimo: corre Intake → Planner y se detiene en `AWAITING_PLAN_APPROVAL` | A |
 | Mar–Mié | 17/18-nov | Prompts de Intake/Planner con salida estructurada; Intake detecta ambigüedad (CR-005) | B |
-| Mar–Mié | 17/18-nov | `verify_repo.py` extendido (contract checks) + CI verde + primer eval case (CR-005 → STOP) | C |
+| Mar–Mié | 17/18-nov | ✅ `verify_repo.py` como Verification Gate (tests/lint/contracts, `--change` → `07-verification.txt`) + CI con secret scan (gitleaks) + primer eval case (CR-005 → STOP, `tests/eval/test_dataset.py`) | C |
 | Mié | 18-nov | **Ensayo de demo**: `CR-001` hasta Human Gate 1 y `CR-005` detenido en clarificación | Todos |
 | **Jue** | **19-nov** | **Revisión en la Facultad** (ver checklist abajo) | Todos |
 | Vie–Dom | 20/22-nov | Coder con escritura acotada (rama por CR) + Test Analyst + Verification Gate bloqueante. **Run completo de CR-001 hasta Verification** | A, B, C |
