@@ -37,8 +37,8 @@ Reglas de colaboración:
 | Lun | 16-nov | Repo creado, starter versionado, estructura y plan (este documento) | Todos |
 | Mar | 17-nov | Cada integrante: `uv sync`, baseline tests, API key de AI Studio en `.env`. Revisar contratos de agentes y máquina de estados | Todos |
 | ~~Mar~~ Lun | 16-nov | ✅ **T00**: lint del baseline corregido (solo formato); `main` y CI en verde — [ADR-004](decisions/ADR-004-baseline-lint.md) | Hecho |
-| Mar | 17-nov | `state.py` + `orchestrator.py` mínimo: corre Intake → Planner y se detiene en `AWAITING_PLAN_APPROVAL` | A |
-| Mar–Mié | 17/18-nov | Prompts de Intake/Planner con salida estructurada; Intake detecta ambigüedad (CR-005) | B |
+| Mar | 17-nov | ✅ `state.py` + `gates.py` + `orchestrator.py` mínimo + `scripts/factory.py`: corre Intake → Planner y se detiene en `AWAITING_PLAN_APPROVAL` (o `AWAITING_CLARIFICATION` en CR-005) | A (cubierto por B) |
+| Mar–Mié | 17/18-nov | ✅ Prompts de Intake/Planner con salida estructurada + `search_repo`; Intake detecta ambigüedad (CR-005) | B |
 | Mar–Mié | 17/18-nov | ✅ `verify_repo.py` como Verification Gate (tests/lint/contracts, `--change` → `07-verification.txt`) + CI con secret scan (gitleaks) + primer eval case (CR-005 → STOP, `tests/eval/test_dataset.py`) | C |
 | Mié | 18-nov | **Ensayo de demo**: `CR-001` hasta Human Gate 1 y `CR-005` detenido en clarificación | Todos |
 | **Jue** | **19-nov** | **Revisión en la Facultad** (ver checklist abajo) | Todos |
@@ -67,7 +67,7 @@ Reglas de colaboración:
 | 5 | Arquitectura inicial revisada | [FACTORY_ARCHITECTURE.md](FACTORY_ARCHITECTURE.md), [STATE_MACHINE.md](STATE_MACHINE.md) | ☑ borrador |
 | 6 | Roles humanos definidos | [HUMAN_ROLES.md](HUMAN_ROLES.md) (rotación por CR) | ☑ confirmar en equipo |
 | 7 | Agentes y responsabilidades | [`factory_app/contracts/`](../../factory_app/contracts/) | ☑ borrador |
-| 8 | Intake → Planner → Human Gate funcionando | `scripts/factory.py run CR-001` se detiene en Gate 1 | ☐ A + B |
+| 8 | Intake → Planner → Human Gate funcionando | `scripts/factory.py run CR-001` se detiene en Gate 1 (`CR-005` en Gate 0) | ☑ |
 | 9 | CR-001 revisado y listo | [CR-001-readiness.md](CR-001-readiness.md) | ☑ borrador |
 | 10 | Repo GitHub con trabajo versionado | este repositorio | ☑ |
 

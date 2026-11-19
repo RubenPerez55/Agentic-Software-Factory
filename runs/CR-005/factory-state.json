@@ -1,0 +1,60 @@
+{
+  "change_id": "CR-005",
+  "status": "AWAITING_CLARIFICATION",
+  "branch": "cr/CR-005",
+  "created_at": "2026-11-19T21:55:59+00:00",
+  "updated_at": "2026-11-19T22:02:59+00:00",
+  "iterations": {
+    "verify": 0,
+    "review": 0
+  },
+  "rate_limit_retries": 3,
+  "human_gates": {
+    "clarification": "PENDING",
+    "plan": "PENDING",
+    "findings": "PENDING",
+    "release": "PENDING"
+  },
+  "verification": {
+    "status": "NOT_RUN"
+  },
+  "review": {
+    "status": "NOT_RUN",
+    "must_fix": 0,
+    "should_fix": 0
+  },
+  "security": {
+    "status": "NOT_RUN",
+    "high": 0,
+    "medium": 0
+  },
+  "history": [
+    {
+      "at": "2026-11-19T21:55:59+00:00",
+      "actor": "Orchestrator",
+      "session_id": null,
+      "from": null,
+      "to": "CREATED",
+      "artifact": "00-change-request.md",
+      "note": "Initialized from CR-005-ambiguous-priority.md"
+    },
+    {
+      "at": "2026-11-19T21:55:59+00:00",
+      "actor": "Orchestrator",
+      "session_id": null,
+      "from": "CREATED",
+      "to": "INTAKE_RUNNING",
+      "artifact": null,
+      "note": "Starting IntakeAgent"
+    },
+    {
+      "at": "2026-11-19T22:02:59+00:00",
+      "actor": "IntakeAgent",
+      "session_id": "CR-005-IntakeAgent-1b4fd585",
+      "from": "INTAKE_RUNNING",
+      "to": "AWAITING_CLARIFICATION",
+      "artifact": "01-intake-report.md",
+      "note": "Stopped for Product Owner clarification (HUMAN_CLARIFICATION_REQUIRED)"
+    }
+  ]
+}
