@@ -1,47 +1,51 @@
+"""Record a signed human decision for a blocking Human Gate.
+
+Usage:
+  python scripts/approve_gate.py CR-001 plan APPROVED "Scope and tests reviewed" \\
+      --by "Ruben Perez" --role "Tech Lead"
+"""
+
 from __future__ import annotations
 
-import json
+import argparse
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VALID_GATES = {"requirements", "plan", "review", "release"}
-VALID_DECISIONS = {"APPROVED", "MODIFIED", "REJECTED", "DEFERRED"}
+sys.path.insert(0, str(ROOT))
+
+from factory_app.gates import GATE_SPECS, record_gate_decision  # noqa: E402
+from factory_app.state import StateTransitionError  # noqa: E402
 
 
-def main() -> None:
-    if len(sys.argv) < 5:
-        raise SystemExit('Usage: python scripts/approve_gate.py CR-001 plan APPROVED "reason"')
-    change_id = sys.argv[1].upper()
-    gate = sys.argv[2].lower()
-    decision = sys.argv[3].upper()
-    reason = " ".join(sys.argv[4:]).strip()
-    if gate not in VALID_GATES:
-        raise SystemExit(f"Invalid gate: {sorted(VALID_GATES)}")
-    if decision not in VALID_DECISIONS:
-        raise SystemExit(f"Invalid decision: {sorted(VALID_DECISIONS)}")
-    if not reason:
-        raise SystemExit("Human decision requires a reason")
-    run = ROOT / "runs" / change_id
-    state_path = run / "factory-state.json"
-    if not state_path.exists():
-        raise SystemExit(f"Run not found: {change_id}")
-    state = json.loads(state_path.read_text(encoding="utf-8"))
-    state["human_gates"][gate] = decision
-    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    evidence = {
-        "change_id": change_id,
-        "gate": gate,
-        "decision": decision,
-        "reason": reason,
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
-        "recorded_by": "TODO: student name / role",
-    }
-    path = run / f"human-{gate}-decision.json"
-    path.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
-    print(f"Recorded {gate}: {decision} -> {path.relative_to(ROOT)}")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Record a Human Gate decision")
+    parser.add_argument("change_id", help="Change Request ID, e.g. CR-001")
+    parser.add_argument("gate", choices=sorted(GATE_SPECS), help="Human gate name")
+    parser.add_argument("decision", help="Decision (e.g. APPROVED, MODIFIED, REJECTED)")
+    parser.add_argument("reason", help="Explicit justification for the decision")
+    parser.add_argument("--by", required=True, help="Full name of the human decision maker")
+    parser.add_argument("--role", required=True, help="Human role (e.g. Product Owner, Tech Lead)")
+    args = parser.parse_args(argv)
+
+    try:
+        state, artifact_path = record_gate_decision(
+            args.change_id,
+            args.gate,
+            args.decision,
+            args.reason,
+            by=args.by,
+            role=args.role,
+            repo_root=ROOT,
+        )
+    except (ValueError, FileNotFoundError, StateTransitionError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    rel = artifact_path.relative_to(ROOT)
+    print(f"Recorded {args.gate}: {args.decision.upper()} -> {rel} (status={state['status']})")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
