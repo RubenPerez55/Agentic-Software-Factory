@@ -54,7 +54,7 @@ def list_repo_files(prefix: str = "") -> dict:
     files, error = _iter_allowlisted_files(prefix)
     if error is not None:
         return {"ok": False, "error": error}
-    items = [str(path.relative_to(REPO_ROOT)) for path in files]
+    items = [path.relative_to(REPO_ROOT).as_posix() for path in files]
     return {"ok": True, "files": items[:250]}
 
 
@@ -74,7 +74,7 @@ def read_repo_file(relative_path: str) -> dict:
     text = path.read_text(encoding="utf-8")
     if len(text) > MAX_READ_CHARS:
         text = text[:MAX_READ_CHARS] + "\n...[TRUNCATED]..."
-    return {"ok": True, "path": str(rel), "content": text}
+    return {"ok": True, "path": rel.as_posix(), "content": text}
 
 
 def search_repo(
@@ -113,7 +113,7 @@ def search_repo(
         except UnicodeDecodeError:
             continue
 
-        rel_path = str(path.relative_to(REPO_ROOT))
+        rel_path = path.relative_to(REPO_ROOT).as_posix()
         for line_no, line in enumerate(content.splitlines(), start=1):
             if not regex.search(line):
                 continue
@@ -165,4 +165,4 @@ def write_run_evidence(change_id: str, filename: str, content: str) -> dict:
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / filename
     path.write_text(content, encoding="utf-8")
-    return {"ok": True, "path": str(path.relative_to(REPO_ROOT))}
+    return {"ok": True, "path": path.relative_to(REPO_ROOT).as_posix()}

@@ -100,6 +100,16 @@ def record_gate_decision(
     if not clean_role:
         raise ValueError("Human decision requires --role (human role)")
 
+    # Enforce who may decide each gate (docs/factory/HUMAN_ROLES.md). Case-insensitive,
+    # but the recorded role is normalized to the canonical spelling.
+    canonical_roles = {r.lower(): r for r in spec["allowed_roles"]}
+    if clean_role.lower() not in canonical_roles:
+        raise ValueError(
+            f"Role {clean_role!r} is not allowed to decide gate {gate_key!r}. "
+            f"Allowed roles: {sorted(spec['allowed_roles'])}"
+        )
+    clean_role = canonical_roles[clean_role.lower()]
+
     # Normalize release aliases so state matches STATE_MACHINE.md
     if gate_key == "release":
         if dec == "APPROVED":
