@@ -42,11 +42,21 @@ IMPLEMENTED_TOOLS = {
     "list_repo_files",
     "read_repo_file",
     "search_repo",
+    "git_diff_readonly",
+    "write_coder_file",
+    "write_test_file",
+    "run_verification",
     "write_run_evidence",
 }
 
 READONLY_AGENTS = ("intake", "planner", "reviewer")
-WRITE_TOOLS = {"write_run_evidence", "run_baseline_verification"}
+WRITE_TOOLS = {
+    "write_coder_file",
+    "write_test_file",
+    "write_run_evidence",
+    "run_verification",
+    "run_baseline_verification",
+}
 
 
 def agent_map() -> dict:

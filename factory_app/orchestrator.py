@@ -10,34 +10,42 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import subprocess
+import sys
 import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from . import agents
+from . import agents, tools
 from .state import (
     AWAITING_CLARIFICATION,
     AWAITING_PLAN_APPROVAL,
+    BLOCKED,
     CODING_RUNNING,
     CREATED,
     INTAKE_RUNNING,
     PLANNING_RUNNING,
     REPO_ROOT,
+    REVIEWING,
     TERMINAL_STATES,
+    TEST_ANALYSIS_RUNNING,
+    VERIFYING,
     init_run,
     load_state,
     normalize_change_id,
     run_dir,
     save_state,
     transition,
+    utc_now,
 )
 
 JSON_FENCE_RE = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
 TRANSIENT_MARKERS = ("429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE")
 
 AgentRunner = Callable[[Any, str, str, dict[str, Any] | None], str]
+VerificationRunner = Callable[[str, Path, int], tuple[bool, str, str]]
 
 
 class HumanGateBlockedError(RuntimeError):
@@ -123,6 +131,102 @@ def _build_planner_prompt(change_id: str, repo_root: Path) -> str:
     return "\n\n".join(sections)
 
 
+def _extract_plan_files(plan_text: str) -> set[str] | None:
+    """Extract approved POSIX file paths from 03-implementation-plan.md JSON block."""
+    parsed = extract_json_block(plan_text)
+    if not parsed:
+        return None
+    paths: set[str] = set()
+    for task in parsed.get("tasks", []):
+        if isinstance(task, dict):
+            for fpath in task.get("files", []):
+                if isinstance(fpath, str) and fpath.strip().endswith(".py"):
+                    paths.add(fpath.strip().lstrip("./").replace("\\", "/"))
+    for section in ("tests_to_add_or_change", "existing_tests_in_conflict"):
+        for item in parsed.get(section, []):
+            if not isinstance(item, dict):
+                continue
+            raw = str(item.get("test", ""))
+            for token in re.findall(r"(?:campusflow|tests)/[A-Za-z0-9_./-]+\.py", raw):
+                paths.add(token.lstrip("./"))
+    return paths or None
+
+
+def _build_coder_prompt(
+    change_id: str,
+    repo_root: Path,
+    *,
+    last_verification_artifact: str | None = None,
+) -> str:
+    folder = run_dir(change_id, repo_root)
+    sections = [
+        f"Implement the human-approved plan for `{change_id}`.",
+        "Use `read_repo_file`, `search_repo`, `write_coder_file`, and `run_verification`. "
+        "Modify ONLY files authorized by the approved plan.",
+    ]
+    preloaded = [
+        (f"runs/{change_id}/00-change-request.md", folder / "00-change-request.md"),
+        (f"runs/{change_id}/03-implementation-plan.md", folder / "03-implementation-plan.md"),
+        (f"runs/{change_id}/04-human-plan-approval.md", folder / "04-human-plan-approval.md"),
+        ("docs/ARCHITECTURE.md", repo_root / "docs/ARCHITECTURE.md"),
+    ]
+    if last_verification_artifact:
+        preloaded.append(
+            (f"runs/{change_id}/{last_verification_artifact}", folder / last_verification_artifact)
+        )
+
+    for label, path in preloaded:
+        content = _read_if_exists(path)
+        if content is not None:
+            sections.append(f"### File: `{label}`\n```markdown\n{content.strip()}\n```")
+    return "\n\n".join(sections)
+
+
+def _build_test_analyst_prompt(change_id: str, repo_root: Path) -> str:
+    folder = run_dir(change_id, repo_root)
+    sections = [
+        f"Analyze test coverage and gaps for `{change_id}`.",
+        "Use `git_diff_readonly`, `read_repo_file`, and `write_test_file` (ONLY under `tests/`). "
+        "Do NOT modify application code and do NOT declare Verification PASS.",
+    ]
+    preloaded = [
+        (f"runs/{change_id}/00-change-request.md", folder / "00-change-request.md"),
+        ("docs/REQUIREMENTS.md", repo_root / "docs/REQUIREMENTS.md"),
+        (f"runs/{change_id}/03-implementation-plan.md", folder / "03-implementation-plan.md"),
+        (f"runs/{change_id}/05-coder-report.md", folder / "05-coder-report.md"),
+    ]
+    for label, path in preloaded:
+        content = _read_if_exists(path)
+        if content is not None:
+            sections.append(f"### File: `{label}`\n```markdown\n{content.strip()}\n```")
+    return "\n\n".join(sections)
+
+
+def default_verification_runner(
+    change_id: str,
+    repo_root: Path,
+    iteration: int,
+) -> tuple[bool, str, str]:
+    """Run deterministic Verification Gate (`scripts/verify_repo.py`) and save evidence."""
+    script = repo_root / "scripts" / "verify_repo.py"
+    proc = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    output = f"# Verification {change_id} (iteration {iteration}) — {utc_now()}\n\n"
+    output += proc.stdout + proc.stderr
+    artifact_name = (
+        "07-verification.txt" if iteration == 1 else f"07-verification.iter{iteration}.txt"
+    )
+    out_path = run_dir(change_id, repo_root) / artifact_name
+    out_path.write_text(output, encoding="utf-8")
+    return proc.returncode == 0, output, artifact_name
+
+
 def adk_agent_runner(
     agent: Any,
     prompt_text: str,
@@ -174,14 +278,18 @@ class FactoryOrchestrator:
         *,
         repo_root: Path = REPO_ROOT,
         agent_runner: AgentRunner | None = None,
+        verification_runner: VerificationRunner | None = None,
         max_retries: int = 3,
+        max_verify_iterations: int = 3,
         base_backoff_seconds: float = 2.0,
         sleep_fn: Callable[[float], None] = time.sleep,
         model_override: str | None = None,
     ) -> None:
         self.repo_root = repo_root
         self.agent_runner = agent_runner or adk_agent_runner
+        self.verification_runner = verification_runner or default_verification_runner
         self.max_retries = max_retries
+        self.max_verify_iterations = max_verify_iterations
         self.base_backoff_seconds = base_backoff_seconds
         self.sleep_fn = sleep_fn
         self.model_override = model_override
@@ -311,6 +419,109 @@ class FactoryOrchestrator:
             repo_root=self.repo_root,
         )
 
+    def _run_coder(self, state: dict[str, Any]) -> dict[str, Any]:
+        cid = state["change_id"]
+        if state["status"] != CODING_RUNNING:
+            transition(
+                state,
+                CODING_RUNNING,
+                actor="Orchestrator",
+                note="Starting CoderAgent",
+                repo_root=self.repo_root,
+            )
+
+        plan_text = _read_if_exists(run_dir(cid, self.repo_root) / "03-implementation-plan.md")
+        allowed_paths = _extract_plan_files(plan_text or "")
+        last_verif = state.get("verification", {}).get("artifact")
+        prompt = _build_coder_prompt(
+            cid,
+            self.repo_root,
+            last_verification_artifact=last_verif if state["iterations"]["verify"] > 0 else None,
+        )
+
+        with tools.scoped_coder_paths(allowed_paths):
+            output, session_id = self._invoke_with_retry(state, agents.coder_agent, prompt)
+
+        iteration = state["iterations"]["verify"] + 1
+        artifact_name = (
+            "05-coder-report.md" if iteration == 1 else f"05-coder-report.iter{iteration}.md"
+        )
+        (run_dir(cid, self.repo_root) / artifact_name).write_text(output, encoding="utf-8")
+
+        return transition(
+            state,
+            TEST_ANALYSIS_RUNNING,
+            actor="CoderAgent",
+            session_id=session_id,
+            artifact=artifact_name,
+            note=f"Implementation pass {iteration} complete",
+            repo_root=self.repo_root,
+        )
+
+    def _run_test_analyst(self, state: dict[str, Any]) -> dict[str, Any]:
+        cid = state["change_id"]
+        prompt = _build_test_analyst_prompt(cid, self.repo_root)
+        output, session_id = self._invoke_with_retry(state, agents.test_analyst_agent, prompt)
+
+        iteration = state["iterations"]["verify"] + 1
+        artifact_name = (
+            "06-test-analysis.md" if iteration == 1 else f"06-test-analysis.iter{iteration}.md"
+        )
+        (run_dir(cid, self.repo_root) / artifact_name).write_text(output, encoding="utf-8")
+
+        return transition(
+            state,
+            VERIFYING,
+            actor="TestAnalystAgent",
+            session_id=session_id,
+            artifact=artifact_name,
+            note=f"Test analysis pass {iteration} complete",
+            repo_root=self.repo_root,
+        )
+
+    def _run_verification(self, state: dict[str, Any]) -> dict[str, Any]:
+        cid = state["change_id"]
+        iteration = state["iterations"]["verify"] + 1
+        state["iterations"]["verify"] = iteration
+        passed, _output, artifact_name = self.verification_runner(cid, self.repo_root, iteration)
+
+        state["verification"] = {
+            "status": "PASS" if passed else "FAIL",
+            "iteration": iteration,
+            "artifact": artifact_name,
+        }
+        if passed:
+            return transition(
+                state,
+                REVIEWING,
+                actor="VerificationGate",
+                artifact=artifact_name,
+                note=f"Deterministic verification PASS on iteration {iteration}",
+                repo_root=self.repo_root,
+            )
+
+        if iteration >= self.max_verify_iterations:
+            return transition(
+                state,
+                BLOCKED,
+                actor="VerificationGate",
+                artifact=artifact_name,
+                note=(
+                    f"Deterministic verification FAIL after {iteration} iterations "
+                    "(max_verify_iterations reached)"
+                ),
+                repo_root=self.repo_root,
+            )
+
+        return transition(
+            state,
+            CODING_RUNNING,
+            actor="VerificationGate",
+            artifact=artifact_name,
+            note=f"Deterministic verification FAIL on iteration {iteration}; returning to Coder",
+            repo_root=self.repo_root,
+        )
+
     def run(self, change_id: str) -> dict[str, Any]:
         """Start (or continue from CREATED) a run until the next Human Gate."""
         cid = normalize_change_id(change_id)
@@ -349,7 +560,7 @@ class FactoryOrchestrator:
                     state,
                     CODING_RUNNING,
                     actor="Orchestrator",
-                    note="Human Gate 1 APPROVED; Coder unlocked (M2 execution pending)",
+                    note="Human Gate 1 APPROVED; starting M2 Coder -> Test Analyst -> Verification",
                     repo_root=self.repo_root,
                 )
             elif initial_status == AWAITING_PLAN_APPROVAL:
@@ -357,5 +568,13 @@ class FactoryOrchestrator:
                     f"{cid} is blocked at Human Gate 1 (AWAITING_PLAN_APPROVAL). "
                     "Product Owner / Tech Lead must approve with `scripts/approve_gate.py`."
                 )
+
+        while state["status"] in {CODING_RUNNING, TEST_ANALYSIS_RUNNING, VERIFYING}:
+            if state["status"] == CODING_RUNNING:
+                state = self._run_coder(state)
+            elif state["status"] == TEST_ANALYSIS_RUNNING:
+                state = self._run_test_analyst(state)
+            elif state["status"] == VERIFYING:
+                state = self._run_verification(state)
 
         return state

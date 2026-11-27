@@ -116,3 +116,17 @@ def test_planning_prompts_enforce_contract_fields():
 
 def test_contract_gate_passes():
     assert check_contracts() == []
+
+
+def test_m2_prompts_enforce_contract_fields():
+    for field in ("tasks_done", "deviations_from_plan", "notes_for_verification", "context_used"):
+        assert field in prompts.CODER_INSTRUCTION
+
+    for field in (
+        "ac_coverage",
+        "gaps",
+        "tests_added",
+        "tests_that_may_mask_defects",
+        "context_used",
+    ):
+        assert field in prompts.TEST_ANALYST_INSTRUCTION

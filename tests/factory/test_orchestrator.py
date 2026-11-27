@@ -8,11 +8,13 @@ from pathlib import Path
 
 import pytest
 
+from factory_app import tools
 from factory_app.gates import record_gate_decision
 from factory_app.orchestrator import FactoryOrchestrator, HumanGateBlockedError, extract_json_block
 from factory_app.state import (
     AWAITING_CLARIFICATION,
     AWAITING_PLAN_APPROVAL,
+    BLOCKED,
     CODING_RUNNING,
     CONSOLIDATING_EVIDENCE,
     CREATED,
@@ -115,6 +117,22 @@ def test_state_machine_enforces_guards(tmp_path: Path):
         transition(state, "MERGED", actor="Test", repo_root=ws)
 
 
+def _make_fake_verifier(results: list[bool]):
+    idx = {"n": 0}
+
+    def _verify(change_id: str, repo_root: Path, iteration: int) -> tuple[bool, str, str]:
+        passed = results[min(idx["n"], len(results) - 1)]
+        idx["n"] += 1
+        artifact = (
+            "07-verification.txt" if iteration == 1 else f"07-verification.iter{iteration}.txt"
+        )
+        text = f"VERIFY_REPO: {'PASS' if passed else 'FAIL'} (iter {iteration})\n"
+        (repo_root / "runs" / change_id / artifact).write_text(text, encoding="utf-8")
+        return passed, text, artifact
+
+    return _verify
+
+
 def test_cr001_stops_at_gate1_blocks_until_approved(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     calls: list[tuple[str, str]] = []
@@ -123,9 +141,15 @@ def test_cr001_stops_at_gate1_blocks_until_approved(tmp_path: Path):
         calls.append((agent.name, session_id))
         if agent.name == "IntakeAgent":
             return _intake_md("PROCEED")
-        return _planner_md()
+        if agent.name == "PlannerAgent":
+            return _planner_md()
+        return f"# {agent.name} report\n"
 
-    orch = FactoryOrchestrator(repo_root=ws, agent_runner=fake_runner)
+    orch = FactoryOrchestrator(
+        repo_root=ws,
+        agent_runner=fake_runner,
+        verification_runner=_make_fake_verifier([True]),
+    )
     state = orch.run("CR-001")
 
     assert state["status"] == AWAITING_PLAN_APPROVAL
@@ -153,7 +177,7 @@ def test_cr001_stops_at_gate1_blocks_until_approved(tmp_path: Path):
     assert state["status"] == AWAITING_PLAN_APPROVAL
     assert [name for name, _ in calls] == ["IntakeAgent", "PlannerAgent", "PlannerAgent"]
 
-    # Recording APPROVED unlocks CODING_RUNNING.
+    # Recording APPROVED runs M2: Coder -> Test Analyst -> Verification PASS -> REVIEWING.
     record_gate_decision(
         "CR-001",
         "plan",
@@ -164,7 +188,113 @@ def test_cr001_stops_at_gate1_blocks_until_approved(tmp_path: Path):
         repo_root=ws,
     )
     state = orch.resume("CR-001")
-    assert state["status"] == CODING_RUNNING
+    assert state["status"] == REVIEWING
+    assert state["verification"]["status"] == "PASS"
+    assert [name for name, _ in calls] == [
+        "IntakeAgent",
+        "PlannerAgent",
+        "PlannerAgent",
+        "CoderAgent",
+        "TestAnalystAgent",
+    ]
+    assert len({sid for _, sid in calls}) == 5  # Every invocation gets an isolated session
+    assert (ws / "runs/CR-001/05-coder-report.md").is_file()
+    assert (ws / "runs/CR-001/06-test-analysis.md").is_file()
+    assert (ws / "runs/CR-001/07-verification.txt").is_file()
+
+
+def test_m2_verification_fail_loops_to_coder_and_recovers(tmp_path: Path):
+    ws = _make_workspace(tmp_path)
+    coder_prompts: list[str] = []
+
+    def fake_runner(agent, prompt_text, session_id, initial_state):
+        if agent.name == "IntakeAgent":
+            return _intake_md("PROCEED")
+        if agent.name == "PlannerAgent":
+            return _planner_md()
+        if agent.name == "CoderAgent":
+            coder_prompts.append(prompt_text)
+        return f"# {agent.name} report\n"
+
+    orch = FactoryOrchestrator(
+        repo_root=ws,
+        agent_runner=fake_runner,
+        verification_runner=_make_fake_verifier([False, True]),
+        max_verify_iterations=3,
+    )
+    orch.run("CR-001")
+    record_gate_decision(
+        "CR-001", "plan", "APPROVED", "Go", by="Ruben Perez", role="Tech Lead", repo_root=ws
+    )
+    state = orch.resume("CR-001")
+
+    assert state["status"] == REVIEWING
+    assert state["iterations"]["verify"] == 2
+    assert len(coder_prompts) == 2
+    assert "07-verification.txt" in coder_prompts[1]
+    assert (ws / "runs/CR-001/07-verification.txt").is_file()
+    assert (ws / "runs/CR-001/07-verification.iter2.txt").is_file()
+
+
+def test_m2_verification_exhausts_iterations_and_blocks(tmp_path: Path):
+    ws = _make_workspace(tmp_path)
+
+    def fake_runner(agent, prompt_text, session_id, initial_state):
+        if agent.name == "IntakeAgent":
+            return _intake_md("PROCEED")
+        if agent.name == "PlannerAgent":
+            return _planner_md()
+        return f"# {agent.name} report\n"
+
+    orch = FactoryOrchestrator(
+        repo_root=ws,
+        agent_runner=fake_runner,
+        verification_runner=_make_fake_verifier([False, False]),
+        max_verify_iterations=2,
+    )
+    orch.run("CR-001")
+    record_gate_decision(
+        "CR-001", "plan", "APPROVED", "Go", by="Ruben Perez", role="Tech Lead", repo_root=ws
+    )
+    state = orch.resume("CR-001")
+
+    assert state["status"] == BLOCKED
+    assert state["iterations"]["verify"] == 2
+    assert state["verification"]["status"] == "FAIL"
+
+
+def test_m2_coder_is_plan_scoped_during_execution(monkeypatch, tmp_path: Path):
+    ws = _make_workspace(tmp_path)
+    monkeypatch.setattr(tools, "REPO_ROOT", ws)
+    write_results: dict[str, bool] = {}
+
+    def fake_runner(agent, prompt_text, session_id, initial_state):
+        if agent.name == "IntakeAgent":
+            return _intake_md("PROCEED")
+        if agent.name == "PlannerAgent":
+            return _planner_md()  # Only authorizes campusflow/service.py
+        if agent.name == "CoderAgent":
+            write_results["in_plan"] = tools.write_coder_file("campusflow/service.py", "x = 1\n")[
+                "ok"
+            ]
+            write_results["out_of_plan"] = tools.write_coder_file("campusflow/api.py", "y = 2\n")[
+                "ok"
+            ]
+        return f"# {agent.name} report\n"
+
+    orch = FactoryOrchestrator(
+        repo_root=ws,
+        agent_runner=fake_runner,
+        verification_runner=_make_fake_verifier([True]),
+    )
+    orch.run("CR-001")
+    record_gate_decision(
+        "CR-001", "plan", "APPROVED", "Go", by="Ruben Perez", role="Tech Lead", repo_root=ws
+    )
+    state = orch.resume("CR-001")
+
+    assert state["status"] == REVIEWING
+    assert write_results == {"in_plan": True, "out_of_plan": False}
 
 
 def test_cr005_stops_at_clarification_then_resumes_after_po_decision(tmp_path: Path):

@@ -58,3 +58,62 @@ def test_write_run_evidence_scoped_and_validated(monkeypatch, tmp_path: Path):
     written = tools.write_run_evidence("CR-001", "01-intake-report.md", "# Report")
     assert written == {"ok": True, "path": "runs/CR-001/01-intake-report.md"}
     assert (tmp_path / "runs/CR-001/01-intake-report.md").read_text(encoding="utf-8") == "# Report"
+
+
+def test_write_coder_file_enforces_roots_plan_scope_and_extensions(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(tools, "REPO_ROOT", tmp_path)
+
+    # Disallowed roots, hidden paths, traversal, and non-python files must be blocked.
+    assert tools.write_coder_file("docs/REQUIREMENTS.md", "hack")["ok"] is False
+    assert tools.write_coder_file("factory_app/agents.py", "hack")["ok"] is False
+    assert tools.write_coder_file(".env", "SECRET=1")["ok"] is False
+    assert tools.write_coder_file("../outside.py", "x = 1")["ok"] is False
+    assert tools.write_coder_file("campusflow/notes.txt", "hi")["ok"] is False
+
+    # Allowed under campusflow/ and tests/ when no plan scope is set.
+    ok = tools.write_coder_file("campusflow/service.py", "x = 1\n")
+    assert ok["ok"] is True
+    assert ok["path"] == "campusflow/service.py"
+
+    # When plan scope is active, writes outside approved files are rejected.
+    with tools.scoped_coder_paths({"campusflow/service.py"}):
+        assert tools.write_coder_file("campusflow/api.py", "y = 2\n")["ok"] is False
+        assert tools.write_coder_file("campusflow/service.py", "x = 2\n")["ok"] is True
+
+
+def test_write_test_file_blocks_app_code_and_test_deletion(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(tools, "REPO_ROOT", tmp_path)
+
+    # Test Analyst cannot write product code.
+    assert tools.write_test_file("campusflow/service.py", "x = 1\n")["ok"] is False
+
+    # Creating a new test file under tests/ is allowed.
+    created = tools.write_test_file(
+        "tests/product/test_waitlist.py",
+        "def test_fifo():\n    assert True\n",
+    )
+    assert created["ok"] is True
+
+    # Removing an existing test function is rejected (no test weakening).
+    weakened = tools.write_test_file(
+        "tests/product/test_waitlist.py",
+        "def test_other():\n    assert True\n",
+    )
+    assert weakened["ok"] is False
+    assert "test_fifo" in weakened["error"]
+
+    # Adding a new test while preserving existing ones succeeds.
+    extended = tools.write_test_file(
+        "tests/product/test_waitlist.py",
+        "def test_fifo():\n    assert True\n\ndef test_cancel_promotes():\n    assert True\n",
+    )
+    assert extended["ok"] is True
+
+
+def test_git_diff_readonly_validates_ref():
+    ok = tools.git_diff_readonly("HEAD")
+    assert ok["ok"] is True
+    assert "diff" in ok
+
+    assert tools.git_diff_readonly("--exec=evil")["ok"] is False
+    assert tools.git_diff_readonly("HEAD; rm -rf /")["ok"] is False

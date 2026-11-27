@@ -15,7 +15,7 @@ allow:
   - list_repo_files
   - read_repo_file
   - search_repo
-  - write_file:           # acotada: solo rutas del plan aprobado bajo estas raíces
+  - write_coder_file:     # acotada: solo rutas del plan aprobado bajo estas raíces
       roots: [campusflow/, tests/]
   - run_verification      # allowlist: pytest, ruff (sin shell arbitrario)
 deny:
