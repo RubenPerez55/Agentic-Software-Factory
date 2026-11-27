@@ -252,6 +252,17 @@ def test_gate_validation_rejects_missing_metadata_or_wrong_state(tmp_path: Path)
             "CR-001", "plan", "APPROVED", "ok", by="Hector", role="Tech Lead", repo_root=ws
         )
 
+    # Only the roles in HUMAN_ROLES.md may decide a gate (no agent or wrong human role).
+    for bad_role in ("Coder", "CoderAgent", "Release Manager"):
+        with pytest.raises(ValueError, match="not allowed to decide gate 'plan'"):
+            record_gate_decision(
+                "CR-001", "plan", "APPROVED", "ok", by="Hector", role=bad_role, repo_root=ws
+            )
+    with pytest.raises(ValueError, match="not allowed to decide gate 'release'"):
+        record_gate_decision(
+            "CR-001", "release", "APPROVED", "ok", by="Hector", role="Tech Lead", repo_root=ws
+        )
+
     # Rejection transitions to REJECTED terminal state.
     orch = FactoryOrchestrator(
         repo_root=ws,
@@ -268,3 +279,23 @@ def test_gate_validation_rejects_missing_metadata_or_wrong_state(tmp_path: Path)
         repo_root=ws,
     )
     assert state["status"] == REJECTED
+
+
+def test_gate_role_is_case_insensitive_and_recorded_canonically(tmp_path: Path):
+    ws = _make_workspace(tmp_path)
+    orch = FactoryOrchestrator(
+        repo_root=ws,
+        agent_runner=lambda agent, *_: _intake_md("HUMAN_CLARIFICATION_REQUIRED"),
+    )
+    orch.run("CR-005")
+    state, artifact = record_gate_decision(
+        "CR-005",
+        "clarification",
+        "REJECTED",
+        "Out of scope",
+        by="Ruben Perez",
+        role="product owner",
+        repo_root=ws,
+    )
+    assert state["status"] == REJECTED
+    assert "**Role:** Product Owner" in artifact.read_text(encoding="utf-8")

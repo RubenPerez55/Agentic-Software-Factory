@@ -25,7 +25,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("decision", help="Decision (e.g. APPROVED, MODIFIED, REJECTED)")
     parser.add_argument("reason", help="Explicit justification for the decision")
     parser.add_argument("--by", required=True, help="Full name of the human decision maker")
-    parser.add_argument("--role", required=True, help="Human role (e.g. Product Owner, Tech Lead)")
+    parser.add_argument(
+        "--role",
+        required=True,
+        help="Human role allowed for the gate: Product Owner, Tech Lead, Human Reviewer, "
+        "Release Manager",
+    )
     args = parser.parse_args(argv)
 
     try:
