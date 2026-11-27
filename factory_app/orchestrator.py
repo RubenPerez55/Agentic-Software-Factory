@@ -21,6 +21,7 @@ from typing import Any
 from . import agents, tools
 from .state import (
     AWAITING_CLARIFICATION,
+    AWAITING_FINDING_DECISIONS,
     AWAITING_PLAN_APPROVAL,
     BLOCKED,
     CODING_RUNNING,
@@ -46,6 +47,7 @@ TRANSIENT_MARKERS = ("429", "RESOURCE_EXHAUSTED", "503", "UNAVAILABLE")
 
 AgentRunner = Callable[[Any, str, str, dict[str, Any] | None], str]
 VerificationRunner = Callable[[str, Path, int], tuple[bool, str, str]]
+SecurityRunner = Callable[[Path], dict[str, Any]]
 
 
 class HumanGateBlockedError(RuntimeError):
@@ -270,6 +272,70 @@ def adk_agent_runner(
     return asyncio.run(_execute())
 
 
+def default_security_runner(repo_root: Path) -> dict[str, Any]:
+    """Run deterministic security scanners without LLM involvement."""
+    from scripts.security_scan import run_all_scans
+
+    return run_all_scans(repo_root)
+
+
+def _build_reviewer_prompt(
+    change_id: str,
+    repo_root: Path,
+    *,
+    verification_artifact: str | None = None,
+) -> str:
+    """Build strictly independent Reviewer context (NEVER includes coder-report.md)."""
+    folder = run_dir(change_id, repo_root)
+    sections = [
+        f"Perform an independent read-only code review for `{change_id}`.",
+        "Use `git_diff_readonly`, `read_repo_file`, and `search_repo` to inspect real code and "
+        "tests. Verify all APIs/dependencies exist. Never trust unverified claims.",
+    ]
+    preloaded = [
+        (f"runs/{change_id}/00-change-request.md", folder / "00-change-request.md"),
+        ("docs/REQUIREMENTS.md", repo_root / "docs/REQUIREMENTS.md"),
+        ("docs/SPEC.md", repo_root / "docs/SPEC.md"),
+        ("docs/ARCHITECTURE.md", repo_root / "docs/ARCHITECTURE.md"),
+    ]
+    verif_name = verification_artifact or "07-verification.txt"
+    preloaded.append((f"runs/{change_id}/{verif_name}", folder / verif_name))
+
+    for label, path in preloaded:
+        content = _read_if_exists(path)
+        if content is not None:
+            sections.append(f"### File: `{label}`\n```markdown\n{content.strip()}\n```")
+    return "\n\n".join(sections)
+
+
+def _build_security_prompt(
+    change_id: str,
+    repo_root: Path,
+    scanner_report: dict[str, Any],
+) -> str:
+    """Build strictly independent Security context grounded in deterministic scanner results."""
+    folder = run_dir(change_id, repo_root)
+    sections = [
+        f"Perform an independent read-only security review for `{change_id}`.",
+        "Base your assessment FIRST on the deterministic scanner output below, then inspect "
+        "changed code with `git_diff_readonly` and `read_repo_file` for authz/IDOR, injection, "
+        "data exposure, and prompt injection.",
+    ]
+    preloaded = [
+        (f"runs/{change_id}/00-change-request.md", folder / "00-change-request.md"),
+        ("docs/REQUIREMENTS.md", repo_root / "docs/REQUIREMENTS.md"),
+    ]
+    for label, path in preloaded:
+        content = _read_if_exists(path)
+        if content is not None:
+            sections.append(f"### File: `{label}`\n```markdown\n{content.strip()}\n```")
+    sections.append(
+        "### Deterministic Security Scanner Output\n```json\n"
+        f"{json.dumps(scanner_report, indent=2)}\n```"
+    )
+    return "\n\n".join(sections)
+
+
 class FactoryOrchestrator:
     """Runs Change Requests through the deterministic state machine with Human Gates."""
 
@@ -279,6 +345,7 @@ class FactoryOrchestrator:
         repo_root: Path = REPO_ROOT,
         agent_runner: AgentRunner | None = None,
         verification_runner: VerificationRunner | None = None,
+        security_runner: SecurityRunner | None = None,
         max_retries: int = 3,
         max_verify_iterations: int = 3,
         base_backoff_seconds: float = 2.0,
@@ -288,6 +355,7 @@ class FactoryOrchestrator:
         self.repo_root = repo_root
         self.agent_runner = agent_runner or adk_agent_runner
         self.verification_runner = verification_runner or default_verification_runner
+        self.security_runner = security_runner or default_security_runner
         self.max_retries = max_retries
         self.max_verify_iterations = max_verify_iterations
         self.base_backoff_seconds = base_backoff_seconds
@@ -522,6 +590,86 @@ class FactoryOrchestrator:
             repo_root=self.repo_root,
         )
 
+    def _run_review_and_security(self, state: dict[str, Any]) -> dict[str, Any]:
+        cid = state["change_id"]
+        verif_artifact = state.get("verification", {}).get("artifact")
+
+        # 1. Independent ReviewerAgent in its own fresh ADK session (no Coder context).
+        review_prompt = _build_reviewer_prompt(
+            cid, self.repo_root, verification_artifact=verif_artifact
+        )
+        review_out, review_sid = self._invoke_with_retry(
+            state, agents.reviewer_agent, review_prompt
+        )
+        review_artifact = "08-review-report.md"
+        (run_dir(cid, self.repo_root) / review_artifact).write_text(review_out, encoding="utf-8")
+
+        review_json = extract_json_block(review_out) or {}
+        review_findings = review_json.get("findings", [])
+        must_fix = sum(
+            1
+            for f in review_findings
+            if isinstance(f, dict) and str(f.get("severity", "")).upper() == "MUST_FIX"
+        )
+        should_fix = sum(
+            1
+            for f in review_findings
+            if isinstance(f, dict) and str(f.get("severity", "")).upper() == "SHOULD_FIX"
+        )
+        state["review"] = {
+            "status": "FAIL" if must_fix > 0 else "PASS",
+            "must_fix": must_fix,
+            "should_fix": should_fix,
+            "session_id": review_sid,
+            "artifact": review_artifact,
+        }
+
+        # 2. Deterministic security scanners + independent SecurityAgent in a separate session.
+        scanner_report = self.security_runner(self.repo_root)
+        sec_prompt = _build_security_prompt(cid, self.repo_root, scanner_report)
+        sec_out, sec_sid = self._invoke_with_retry(state, agents.security_agent, sec_prompt)
+        sec_artifact = "09-security-report.md"
+        (run_dir(cid, self.repo_root) / sec_artifact).write_text(sec_out, encoding="utf-8")
+
+        sec_json = extract_json_block(sec_out) or {}
+        sec_findings = sec_json.get("findings", [])
+        sec_high = max(
+            int(scanner_report.get("high", 0)),
+            sum(
+                1
+                for f in sec_findings
+                if isinstance(f, dict) and str(f.get("severity", "")).upper() == "HIGH"
+            ),
+        )
+        sec_medium = max(
+            int(scanner_report.get("medium", 0)),
+            sum(
+                1
+                for f in sec_findings
+                if isinstance(f, dict) and str(f.get("severity", "")).upper() == "MEDIUM"
+            ),
+        )
+        state["security"] = {
+            "status": "FAIL" if (sec_high > 0 or not scanner_report.get("ok", True)) else "PASS",
+            "high": sec_high,
+            "medium": sec_medium,
+            "session_id": sec_sid,
+            "artifact": sec_artifact,
+        }
+        state["human_gates"]["findings"] = "PENDING"
+        return transition(
+            state,
+            AWAITING_FINDING_DECISIONS,
+            actor="Reviewer+Security",
+            session_id=f"{review_sid},{sec_sid}",
+            artifact=f"{review_artifact},{sec_artifact}",
+            note=(
+                f"Independent review complete (must_fix={must_fix}, sec_high={sec_high}); "
+                "awaiting Human Gate 2 (Human Reviewer)"
+            ),
+            repo_root=self.repo_root,
+        )
+
     def run(self, change_id: str) -> dict[str, Any]:
         """Start (or continue from CREATED) a run until the next Human Gate."""
         cid = normalize_change_id(change_id)
@@ -576,5 +724,18 @@ class FactoryOrchestrator:
                 state = self._run_test_analyst(state)
             elif state["status"] == VERIFYING:
                 state = self._run_verification(state)
+
+        if state["status"] == REVIEWING:
+            state = self._run_review_and_security(state)
+
+        if (
+            state["status"] == AWAITING_FINDING_DECISIONS
+            and initial_status == AWAITING_FINDING_DECISIONS
+            and state["human_gates"].get("findings") == "PENDING"
+        ):
+            raise HumanGateBlockedError(
+                f"{cid} is blocked at Human Gate 2 (AWAITING_FINDING_DECISIONS). "
+                "Human Reviewer must record decisions with `scripts/approve_gate.py`."
+            )
 
         return state

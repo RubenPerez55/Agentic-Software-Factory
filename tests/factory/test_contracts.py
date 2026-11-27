@@ -130,3 +130,11 @@ def test_m2_prompts_enforce_contract_fields():
         "context_used",
     ):
         assert field in prompts.TEST_ANALYST_INSTRUCTION
+
+
+def test_m3_prompts_enforce_contract_fields():
+    for field in ("findings", "MUST_FIX", "apis_verified", "context_used"):
+        assert field in prompts.REVIEWER_INSTRUCTION
+
+    for field in ("scanner_results", "findings", "HIGH", "secret_detected", "context_used"):
+        assert field in prompts.SECURITY_INSTRUCTION

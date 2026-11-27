@@ -13,6 +13,7 @@ from .tools import (
     git_diff_readonly,
     list_repo_files,
     read_repo_file,
+    run_security_scanners,
     run_verification,
     search_repo,
     write_coder_file,
@@ -71,9 +72,9 @@ reviewer_agent = LlmAgent(
 security_agent = LlmAgent(
     name="SecurityAgent",
     model=GEMINI_MODEL,
-    description="Independent read-only security reviewer.",
+    description="Independent read-only security reviewer with deterministic scanners.",
     instruction=SECURITY_INSTRUCTION,
-    tools=[*READ_TOOLS, git_diff_readonly],
+    tools=[*READ_TOOLS, git_diff_readonly, run_security_scanners],
     output_key="security_report",
 )
 

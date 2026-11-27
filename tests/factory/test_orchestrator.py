@@ -13,6 +13,7 @@ from factory_app.gates import record_gate_decision
 from factory_app.orchestrator import FactoryOrchestrator, HumanGateBlockedError, extract_json_block
 from factory_app.state import (
     AWAITING_CLARIFICATION,
+    AWAITING_FINDING_DECISIONS,
     AWAITING_PLAN_APPROVAL,
     BLOCKED,
     CODING_RUNNING,
@@ -133,6 +134,58 @@ def _make_fake_verifier(results: list[bool]):
     return _verify
 
 
+def _clean_security_runner(_repo_root: Path) -> dict:
+    return {
+        "ok": True,
+        "high": 0,
+        "medium": 0,
+        "scanners": [{"tool": "secret_scan", "status": "PASS", "high": 0, "medium": 0, "low": 0}],
+    }
+
+
+def _review_md(must_fix: int = 0) -> str:
+    findings = [
+        {
+            "id": f"RF-{i + 1}",
+            "severity": "MUST_FIX",
+            "ac": ["AC-CR001.2"],
+            "file": "campusflow/service.py",
+            "line": 10,
+            "evidence": "Missing FIFO check",
+            "recommendation": "Order waitlist by id ASC",
+        }
+        for i in range(must_fix)
+    ]
+    payload = {
+        "findings": findings,
+        "apis_verified": ["campusflow.service.CampusFlowService"],
+        "context_used": ["docs/REQUIREMENTS.md", "runs/CR-001/07-verification.txt"],
+    }
+    return f"# Review Report\n\n```json\n{json.dumps(payload, indent=2)}\n```\n"
+
+
+def _security_md(high: int = 0) -> str:
+    findings = [
+        {
+            "id": f"SEC-{i + 1}",
+            "severity": "HIGH",
+            "category": "authz",
+            "file": "campusflow/service.py",
+            "evidence": "Client-supplied owner_id trusted",
+            "recommendation": "Compare stored event.owner against actor",
+        }
+        for i in range(high)
+    ]
+    payload = {
+        "scanner_results": [
+            {"tool": "secret_scan", "status": "PASS", "high": 0, "medium": 0, "low": 0}
+        ],
+        "findings": findings,
+        "context_used": ["docs/REQUIREMENTS.md"],
+    }
+    return f"# Security Report\n\n```json\n{json.dumps(payload, indent=2)}\n```\n"
+
+
 def test_cr001_stops_at_gate1_blocks_until_approved(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     calls: list[tuple[str, str]] = []
@@ -143,12 +196,17 @@ def test_cr001_stops_at_gate1_blocks_until_approved(tmp_path: Path):
             return _intake_md("PROCEED")
         if agent.name == "PlannerAgent":
             return _planner_md()
+        if agent.name == "ReviewerAgent":
+            return _review_md(must_fix=0)
+        if agent.name == "SecurityAgent":
+            return _security_md(high=0)
         return f"# {agent.name} report\n"
 
     orch = FactoryOrchestrator(
         repo_root=ws,
         agent_runner=fake_runner,
         verification_runner=_make_fake_verifier([True]),
+        security_runner=_clean_security_runner,
     )
     state = orch.run("CR-001")
 
@@ -177,7 +235,7 @@ def test_cr001_stops_at_gate1_blocks_until_approved(tmp_path: Path):
     assert state["status"] == AWAITING_PLAN_APPROVAL
     assert [name for name, _ in calls] == ["IntakeAgent", "PlannerAgent", "PlannerAgent"]
 
-    # Recording APPROVED runs M2: Coder -> Test Analyst -> Verification PASS -> REVIEWING.
+    # Recording APPROVED runs M2 + M3: Coder -> Test Analyst -> Verify PASS -> Reviewer + Security.
     record_gate_decision(
         "CR-001",
         "plan",
@@ -188,7 +246,7 @@ def test_cr001_stops_at_gate1_blocks_until_approved(tmp_path: Path):
         repo_root=ws,
     )
     state = orch.resume("CR-001")
-    assert state["status"] == REVIEWING
+    assert state["status"] == AWAITING_FINDING_DECISIONS
     assert state["verification"]["status"] == "PASS"
     assert [name for name, _ in calls] == [
         "IntakeAgent",
@@ -196,11 +254,19 @@ def test_cr001_stops_at_gate1_blocks_until_approved(tmp_path: Path):
         "PlannerAgent",
         "CoderAgent",
         "TestAnalystAgent",
+        "ReviewerAgent",
+        "SecurityAgent",
     ]
-    assert len({sid for _, sid in calls}) == 5  # Every invocation gets an isolated session
+    assert len({sid for _, sid in calls}) == 7  # Every invocation gets an isolated session
     assert (ws / "runs/CR-001/05-coder-report.md").is_file()
     assert (ws / "runs/CR-001/06-test-analysis.md").is_file()
     assert (ws / "runs/CR-001/07-verification.txt").is_file()
+    assert (ws / "runs/CR-001/08-review-report.md").is_file()
+    assert (ws / "runs/CR-001/09-security-report.md").is_file()
+
+    # Human Gate 2 blocks resume until Human Reviewer records findings decisions.
+    with pytest.raises(HumanGateBlockedError):
+        orch.resume("CR-001")
 
 
 def test_m2_verification_fail_loops_to_coder_and_recovers(tmp_path: Path):
@@ -214,12 +280,17 @@ def test_m2_verification_fail_loops_to_coder_and_recovers(tmp_path: Path):
             return _planner_md()
         if agent.name == "CoderAgent":
             coder_prompts.append(prompt_text)
+        if agent.name == "ReviewerAgent":
+            return _review_md(must_fix=0)
+        if agent.name == "SecurityAgent":
+            return _security_md(high=0)
         return f"# {agent.name} report\n"
 
     orch = FactoryOrchestrator(
         repo_root=ws,
         agent_runner=fake_runner,
         verification_runner=_make_fake_verifier([False, True]),
+        security_runner=_clean_security_runner,
         max_verify_iterations=3,
     )
     orch.run("CR-001")
@@ -228,7 +299,7 @@ def test_m2_verification_fail_loops_to_coder_and_recovers(tmp_path: Path):
     )
     state = orch.resume("CR-001")
 
-    assert state["status"] == REVIEWING
+    assert state["status"] == AWAITING_FINDING_DECISIONS
     assert state["iterations"]["verify"] == 2
     assert len(coder_prompts) == 2
     assert "07-verification.txt" in coder_prompts[1]
@@ -250,6 +321,7 @@ def test_m2_verification_exhausts_iterations_and_blocks(tmp_path: Path):
         repo_root=ws,
         agent_runner=fake_runner,
         verification_runner=_make_fake_verifier([False, False]),
+        security_runner=_clean_security_runner,
         max_verify_iterations=2,
     )
     orch.run("CR-001")
@@ -280,12 +352,17 @@ def test_m2_coder_is_plan_scoped_during_execution(monkeypatch, tmp_path: Path):
             write_results["out_of_plan"] = tools.write_coder_file("campusflow/api.py", "y = 2\n")[
                 "ok"
             ]
+        if agent.name == "ReviewerAgent":
+            return _review_md(must_fix=0)
+        if agent.name == "SecurityAgent":
+            return _security_md(high=0)
         return f"# {agent.name} report\n"
 
     orch = FactoryOrchestrator(
         repo_root=ws,
         agent_runner=fake_runner,
         verification_runner=_make_fake_verifier([True]),
+        security_runner=_clean_security_runner,
     )
     orch.run("CR-001")
     record_gate_decision(
@@ -293,8 +370,55 @@ def test_m2_coder_is_plan_scoped_during_execution(monkeypatch, tmp_path: Path):
     )
     state = orch.resume("CR-001")
 
-    assert state["status"] == REVIEWING
+    assert state["status"] == AWAITING_FINDING_DECISIONS
     assert write_results == {"in_plan": True, "out_of_plan": False}
+
+
+def test_m3_reviewer_and_security_are_independent_from_coder(tmp_path: Path):
+    ws = _make_workspace(tmp_path)
+    seen: dict[str, tuple[str, str]] = {}
+
+    def fake_runner(agent, prompt_text, session_id, initial_state):
+        seen[agent.name] = (session_id, prompt_text)
+        if agent.name == "IntakeAgent":
+            return _intake_md("PROCEED")
+        if agent.name == "PlannerAgent":
+            return _planner_md()
+        if agent.name == "CoderAgent":
+            return "SECRET_CODER_INTERNAL_REASONING_MARKER"
+        if agent.name == "ReviewerAgent":
+            return _review_md(must_fix=1)
+        if agent.name == "SecurityAgent":
+            return _security_md(high=1)
+        return f"# {agent.name} report\n"
+
+    orch = FactoryOrchestrator(
+        repo_root=ws,
+        agent_runner=fake_runner,
+        verification_runner=_make_fake_verifier([True]),
+        security_runner=_clean_security_runner,
+    )
+    orch.run("CR-001")
+    record_gate_decision(
+        "CR-001", "plan", "APPROVED", "Go", by="Ruben Perez", role="Tech Lead", repo_root=ws
+    )
+    state = orch.resume("CR-001")
+
+    assert state["status"] == AWAITING_FINDING_DECISIONS
+    assert state["review"]["must_fix"] == 1
+    assert state["review"]["status"] == "FAIL"
+    assert state["security"]["high"] == 1
+    assert state["security"]["status"] == "FAIL"
+
+    # Coder, Reviewer, and Security MUST have 3 distinct session IDs and zero Coder leakage.
+    coder_sid, _ = seen["CoderAgent"]
+    rev_sid, rev_prompt = seen["ReviewerAgent"]
+    sec_sid, sec_prompt = seen["SecurityAgent"]
+    assert len({coder_sid, rev_sid, sec_sid}) == 3
+    assert "SECRET_CODER_INTERNAL_REASONING_MARKER" not in rev_prompt
+    assert "05-coder-report.md" not in rev_prompt
+    assert "SECRET_CODER_INTERNAL_REASONING_MARKER" not in sec_prompt
+    assert "05-coder-report.md" not in sec_prompt
 
 
 def test_cr005_stops_at_clarification_then_resumes_after_po_decision(tmp_path: Path):
