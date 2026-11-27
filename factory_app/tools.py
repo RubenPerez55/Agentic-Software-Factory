@@ -282,6 +282,13 @@ def run_baseline_verification() -> dict:
     return run_verification()
 
 
+def run_security_scanners() -> dict:
+    """Run allowlisted deterministic security scanners (secrets, SAST, Semgrep, pip-audit)."""
+    from scripts.security_scan import run_all_scans
+
+    return run_all_scans(REPO_ROOT)
+
+
 def write_run_evidence(change_id: str, filename: str, content: str) -> dict:
     """Write only evidence files under runs/<CR-ID>/; never product code."""
     if not change_id.startswith("CR-"):

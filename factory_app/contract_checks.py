@@ -46,6 +46,7 @@ IMPLEMENTED_TOOLS = {
     "write_coder_file",
     "write_test_file",
     "run_verification",
+    "run_security_scanners",
     "write_run_evidence",
 }
 
