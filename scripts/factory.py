@@ -20,7 +20,9 @@ from factory_app.orchestrator import FactoryOrchestrator, HumanGateBlockedError 
 from factory_app.state import (  # noqa: E402
     AWAITING_CLARIFICATION,
     AWAITING_PLAN_APPROVAL,
+    BLOCKED,
     CODING_RUNNING,
+    REVIEWING,
     load_state,
     normalize_change_id,
     run_dir,
@@ -45,7 +47,14 @@ def _next_action_hint(state: dict) -> str:
             'plan APPROVED "<reason>" --by "<name>" --role "Tech Lead"`'
         )
     if status == CODING_RUNNING:
-        return "Human Gate 1 APPROVED. Ready for M2 Coder Agent execution."
+        return (
+            f"Run `uv run python scripts/factory.py resume {cid}` "
+            "to continue Coder/Verification."
+        )
+    if status == REVIEWING:
+        return "Verification Gate PASS. Ready for M3 Independent Reviewer + Security."
+    if status == BLOCKED:
+        return "Run BLOCKED (verification iterations exhausted). Human intervention required."
     return f"Current state: {status}"
 
 

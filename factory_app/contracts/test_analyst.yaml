@@ -13,7 +13,7 @@ allow:
   - read_repo_file
   - search_repo
   - git_diff_readonly
-  - write_file:
+  - write_test_file:
       roots: [tests/]
       only_new_tests: true
 deny:

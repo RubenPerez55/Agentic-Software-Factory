@@ -10,11 +10,14 @@ from .prompts import (
     TEST_ANALYST_INSTRUCTION,
 )
 from .tools import (
+    git_diff_readonly,
     list_repo_files,
     read_repo_file,
-    run_baseline_verification,
+    run_verification,
     search_repo,
+    write_coder_file,
     write_run_evidence,
+    write_test_file,
 )
 
 GEMINI_MODEL = "gemini-3.8-flash"
@@ -41,18 +44,18 @@ planner_agent = LlmAgent(
 coder_agent = LlmAgent(
     name="CoderAgent",
     model=GEMINI_MODEL,
-    description="Implements an approved plan. Write tooling is intentionally absent in starter.",
+    description="Implements only a human-approved plan using plan-scoped write tools.",
     instruction=CODER_INSTRUCTION,
-    tools=READ_TOOLS,
+    tools=[*READ_TOOLS, write_coder_file, run_verification],
     output_key="coder_report",
 )
 
 test_analyst_agent = LlmAgent(
     name="TestAnalystAgent",
     model=GEMINI_MODEL,
-    description="Finds test gaps and interprets deterministic verification evidence.",
+    description="Finds test gaps and adds authorized tests under tests/ without declaring PASS.",
     instruction=TEST_ANALYST_INSTRUCTION,
-    tools=[*READ_TOOLS, run_baseline_verification],
+    tools=[*READ_TOOLS, git_diff_readonly, write_test_file],
     output_key="test_analysis",
 )
 
@@ -61,7 +64,7 @@ reviewer_agent = LlmAgent(
     model=GEMINI_MODEL,
     description="Independent read-only software reviewer.",
     instruction=REVIEWER_INSTRUCTION,
-    tools=READ_TOOLS,
+    tools=[*READ_TOOLS, git_diff_readonly],
     output_key="review_report",
 )
 
@@ -70,7 +73,7 @@ security_agent = LlmAgent(
     model=GEMINI_MODEL,
     description="Independent read-only security reviewer.",
     instruction=SECURITY_INSTRUCTION,
-    tools=READ_TOOLS,
+    tools=[*READ_TOOLS, git_diff_readonly],
     output_key="security_report",
 )
 
